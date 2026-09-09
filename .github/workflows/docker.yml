@@ -206,6 +206,10 @@ jobs:
             [ $i -lt 3 ] && sleep 30
           done
 
+      - name: Check PostgreSQL SQL validation in the built image
+        if: contains(fromJSON('["dev", "lean", "py311", "py312"]'), matrix.build_preset)
+        run: docker run --rm -i --entrypoint python "$IMAGE_TAG" < scripts/test-docker-sql-validation.py
+
       - name: Print docker stats
         run: |
           echo "SHA: ${{ github.sha }}"

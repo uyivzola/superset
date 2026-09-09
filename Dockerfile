@@ -127,6 +127,12 @@ RUN uv venv /app/.venv
 ENV PATH="/app/.venv/bin:${PATH}"
 
 ######################################################################
+# PostgreSQL SQL validator executable, without development headers
+######################################################################
+FROM python-base AS postgres-sql-validator
+RUN /app/docker/apt-install.sh libecpg-dev
+
+######################################################################
 # Python translation compiler layer
 ######################################################################
 FROM python-base AS python-translation-compiler
@@ -194,17 +200,24 @@ COPY scripts/check-env.py scripts/
 # keeping for backward compatibility
 COPY --chmod=755 ./docker/entrypoints/run-server.sh /usr/bin/
 
-# Some debian libs. Only runtime shared libraries belong here: the matching
-# `-dev` packages drag in a full C toolchain (libc6-dev, linux-libc-dev,
-# libssl-dev, ...) that no final image needs. Stages that compile native Python
-# extensions install the headers they require themselves.
-RUN /app/docker/apt-install.sh \
+# Native extension headers belong in the stages that compile them.
+# The Python release presets use Bookworm, which names the LDAP library differently.
+RUN . /etc/os-release \
+    && if [ "$VERSION_CODENAME" = "bookworm" ]; then \
+        ldap_runtime_package=libldap-2.5-0; \
+    else \
+        ldap_runtime_package=libldap2; \
+    fi \
+    && /app/docker/apt-install.sh \
       curl \
       libsasl2-2 \
       libsasl2-modules-gssapi-mit \
       libpq5 \
       libecpg6 \
-      libldap2
+      "$ldap_runtime_package"
+
+# pgsanity runs ecpg to validate PostgreSQL syntax, even in lean images.
+COPY --from=postgres-sql-validator /usr/bin/ecpg /usr/local/bin/ecpg
 
 # Create data directory for DuckDB examples database
 # The database file will be created at runtime when examples are loaded from Parquet files
